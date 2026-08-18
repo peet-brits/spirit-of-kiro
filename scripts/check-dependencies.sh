@@ -79,11 +79,18 @@ echo -e "${GREEN}✓ AWS credentials are valid${NC}"
 # Check AWS Bedrock access
 echo "Checking AWS Bedrock model access..."
 
-# List of required models
+# List of required models - at least one must be accessible for the server to function.
+# The server uses cross-region inference profiles (us.*), but the base model IDs are
+# checked here since list-foundation-models returns base IDs.
+# See server/llm/model.ts for the full fallback chain.
 required_models=(
-    "amazon.nova-pro"
-    "anthropic.claude-3-sonnet-20240229"
-    "anthropic.claude-3-sonnet-20240229-v1:0"
+    "amazon.nova-pro-v1:0"
+)
+
+# At least one of these Claude models is recommended (server falls back to Nova Pro if unavailable)
+recommended_models=(
+    "anthropic.claude-3-7-sonnet-20250219-v1:0"
+    "anthropic.claude-sonnet-4-20250514-v1:0"
 )
 
 # List of optional models (for image generation)
@@ -124,6 +131,28 @@ if [ "$all_required_models_available" = false ]; then
     exit 1
 fi
 
+# Check recommended Claude models (server falls back to Nova Pro if unavailable)
+echo -e "\nChecking recommended models (better quality, server falls back to Nova Pro if missing):"
+any_recommended_available=false
+for model in "${recommended_models[@]}"; do
+    if echo "$available_models" | grep -q "$model"; then
+        echo -e "${GREEN}✓ Access to $model is available${NC}"
+        any_recommended_available=true
+    else
+        echo -e "${YELLOW}⚠ No access to $model (recommended)${NC}"
+    fi
+done
+
+if [ "$any_recommended_available" = false ]; then
+    echo -e "\n${YELLOW}Note: No Claude models are enabled. The server will use Amazon Nova Pro only.${NC}"
+    print_instructions "For best results, enable one or more Claude models:
+1. Log into AWS Console
+2. Navigate to Amazon Bedrock → Model access
+3. Request access to one of:
+   - anthropic.claude-3-7-sonnet-20250219-v1:0 (Claude Sonnet 3.7)
+   - anthropic.claude-sonnet-4-20250514-v1:0 (Claude Sonnet 4)"
+fi
+
 # Check optional models
 echo -e "\nChecking optional models (for image generation):"
 missing_optional_models=()
@@ -151,4 +180,4 @@ These models are only needed if you want to generate item images yourself."
 fi
 
 echo -e "\n${GREEN}All required dependencies are satisfied!${NC}"
-echo -e "${YELLOW}Note: Optional models are only needed if you want to generate item images yourself.${NC}" 
+echo -e "${YELLOW}Note: Optional models are only needed if you want to generate item images yourself.${NC}"
