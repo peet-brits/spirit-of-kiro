@@ -30,19 +30,19 @@ function startProgressAnimation() {
   // Reset progress
   progress.value = 0;
   showProgressBar.value = true;
-  
+
   // Clear any existing interval
   if (progressInterval) {
     clearInterval(progressInterval);
   }
-  
+
   // Set up the interval to update progress
   // 20 seconds = 20000ms
   // We'll update every 100ms, so 20000/100 = 200 steps
   // Each step increases progress by 0.5%
   progressInterval = setInterval(() => {
     progress.value += 0.5;
-    
+
     // If we've reached 100%, clear the interval
     if (progress.value >= 100) {
       if (progressInterval) {
@@ -56,7 +56,7 @@ function startProgressAnimation() {
 function handleLeverPulled() {
   // Start shaking when lever is pulled
   isShaking.value = true;
-  
+
   // Start the progress animation
   startProgressAnimation();
 }
@@ -64,7 +64,7 @@ function handleLeverPulled() {
 function spawnItemGameObject(data: any) {
   // Check if the item has a story (newly generated) or not (from inventory)
   const isFromInventory = data && data.item && !data.story;
-  
+
   if (data && data.story) {
     gameStore.emitEvent('announce', {
       message: data.story,
@@ -73,15 +73,15 @@ function spawnItemGameObject(data: any) {
   }
 
   // First, add the received item to the game store
-  if (data && data.item) {    
+  if (data && data.item) {
     // Extract the itemId from the event data
     const itemId = data.item.id;
-    
+
     // Position it slightly offset from the dispenser
     const itemRow = props.row + props.depth + 2;
     const itemCol = props.col + props.width / 2 + .5;
     const itemHeight = 1.5;
-    
+
     // Add a new game object for the pulled item
     gameStore.addObject({
       id: itemId,
@@ -91,7 +91,7 @@ function spawnItemGameObject(data: any) {
       width: 1,
       depth: 1,
       height: 1,
-      props: { 
+      props: {
         itemId,
         pickedUp: isFromInventory // Set pickedUp flag to true for items from inventory, false for newly generated items
       },
@@ -107,13 +107,13 @@ function spawnItemGameObject(data: any) {
       }
     });
   }
-  
+
   // Stop the shake animation after the item is spawned
   isShaking.value = false;
-  
+
   // Hide the progress bar when the item is spawned
   showProgressBar.value = false;
-  
+
   // Clear any existing interval
   if (progressInterval) {
     clearInterval(progressInterval);
@@ -121,18 +121,38 @@ function spawnItemGameObject(data: any) {
   }
 }
 
+function handleError() {
+  // If the dispenser is waiting for an item and the server returns an error,
+  // stop shaking and hide the progress bar so the player can try again.
+  if (isShaking.value) {
+    isShaking.value = false;
+    showProgressBar.value = false;
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+    }
+    gameStore.emitEvent('announce', {
+      message: 'The dispenser sputtered... nothing came out. Try again!',
+      duration: 5000
+    });
+  }
+}
+
 let leverPulledListenerId: string;
 let pulledItemListenerId: string;
+let errorListenerId: string;
 
 onMounted(() => {
   leverPulledListenerId = gameStore.addEventListener('lever-pulled', handleLeverPulled);
   pulledItemListenerId = gameStore.addEventListener('pulled-item', spawnItemGameObject);
+  errorListenerId = gameStore.addEventListener('error', handleError);
 });
 
 onUnmounted(() => {
   gameStore.removeEventListener('lever-pulled', leverPulledListenerId);
   gameStore.removeEventListener('pulled-item', pulledItemListenerId);
-  
+  gameStore.removeEventListener('error', errorListenerId);
+
   // Clean up interval if component is unmounted
   if (progressInterval) {
     clearInterval(progressInterval);
@@ -151,8 +171,8 @@ onUnmounted(() => {
     border: gameStore.debug ? '1px solid red': 'none'
   }">
     <div v-if="playerIsNear && !isPulling" class="interact-prompt">E</div>
-    <img 
-      :src="panel" 
+    <img
+      :src="panel"
       :style="{
         position: 'absolute',
         width: `${(width + 2) * (tileSize)}px`,
@@ -172,9 +192,9 @@ onUnmounted(() => {
         <div class="progress-bar-fill" :style="{ width: `${progress}%` }"></div>
       </div>
     </div>
-    <img 
-      :src="dispenserImage" 
-      :width="width * tileSize" 
+    <img
+      :src="dispenserImage"
+      :width="width * tileSize"
       :height="4 * tileSize"
       :style="{
         position: 'absolute',

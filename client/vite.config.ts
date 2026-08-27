@@ -17,4 +17,15 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  server: {
+    proxy: {
+      // Proxy WebSocket connections to the game server when running without Docker.
+      // In Docker, VITE_WS_URL is set explicitly so this proxy is not used.
+      '/ws': {
+        target: 'ws://localhost:8080',
+        ws: true,
+        rewrite: (path) => path.replace(/^\/ws/, '/'),
+      },
+    },
+  },
 })

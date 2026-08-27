@@ -8,9 +8,9 @@ const bedrockClient = new BedrockRuntimeClient({
 // Model fallback configuration
 type ModelId = 'us.anthropic.claude-sonnet-4-20250514-v1:0' | 'us.anthropic.claude-3-7-sonnet-20250219-v1:0' | 'us.amazon.nova-pro-v1:0';
 const MODELS: ModelId[] = [
-  //'us.anthropic.claude-sonnet-4-20250514-v1:0',
+  'us.anthropic.claude-sonnet-4-20250514-v1:0',
+  'us.amazon.nova-pro-v1:0',
   'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
-  'us.amazon.nova-pro-v1:0'
 ];
 
 // Track model fallback state
@@ -25,7 +25,7 @@ const isModelInCooldown = (modelId: ModelId): boolean => {
 const getNextAvailableModel = (currentModelId: ModelId): ModelId | undefined => {
   const currentIndex = MODELS.indexOf(currentModelId);
   if (currentIndex === -1) return undefined;
-  
+
   // Try next models in sequence
   for (let i = 1; i < MODELS.length; i++) {
     const nextModel = MODELS[(currentIndex + i) % MODELS.length];
@@ -52,7 +52,7 @@ export const invoke = async (prompt: object): Promise<string | undefined> => {
     console.error('No available models - all are in cooldown');
     return undefined;
   }
-  
+
   let attempts = 0;
   const maxAttempts = 3;
 
@@ -66,45 +66,38 @@ export const invoke = async (prompt: object): Promise<string | undefined> => {
 
       // Invoke the model using Converse API
       const response = await bedrockClient.send(command);
-      
+
       // Extract the response text
       const output = response.output?.message?.content?.[0]?.text;
-      
+
       console.log(`LLM - Model: ${currentModelId} Latency: ${response.metrics?.latencyMs} Cache: ${response.usage?.cacheReadInputTokens} In: ${response.usage?.inputTokens} Out: ${response.usage?.outputTokens}`);
       return output;
     } catch (err: any) {
       console.error(`Error with model ${currentModelId}:`, err);
-      
-      // Check if it's a throttling error
-      if (err.name === 'ThrottlingException') {
-        // Mark current model as in cooldown
-        modelFallbackState.set(currentModelId, Date.now());
-        
-        // Try to get next available model
-        const nextModel = getNextAvailableModel(currentModelId);
-        if (nextModel) {
-          console.log(`Switching to fallback model: ${nextModel}`);
-          currentModelId = nextModel;
-          attempts++;
-          continue;
-        }
+
+      // Mark current model as in cooldown for any error (throttling, EOL, access denied, etc.)
+      modelFallbackState.set(currentModelId, Date.now());
+
+      // Try to get next available model
+      const nextModel = getNextAvailableModel(currentModelId);
+      if (nextModel) {
+        console.log(`Switching to fallback model: ${nextModel}`);
+        currentModelId = nextModel;
+        attempts++;
+        continue;
       }
-      
-      // If we've exhausted all attempts or it's not a throttling error
-      if (attempts >= maxAttempts - 1 || err.name !== 'ThrottlingException') {
-        return undefined;
-      }
-      
-      attempts++;
+
+      // No more models to try
+      return undefined;
     }
   }
-  
+
   return undefined;
 };
 
 // New streaming invoke function
 export const invokeStream = async (
-  prompt: object, 
+  prompt: object,
   onChunk: (chunk: string) => void,
   onComplete?: (fullResponse: string) => void
 ): Promise<void> => {
@@ -113,7 +106,7 @@ export const invokeStream = async (
     console.error('No available models - all are in cooldown');
     return;
   }
-  
+
   let attempts = 0;
   const maxAttempts = 3;
   let fullResponse = '';
@@ -128,7 +121,7 @@ export const invokeStream = async (
 
       // Invoke the model using ConverseStream API
       const response = await bedrockClient.send(command);
-      
+
       // Process the streaming response
       for await (const chunk of response.stream || []) {
         if (chunk.contentBlockDelta) {
@@ -137,38 +130,31 @@ export const invokeStream = async (
           onChunk(textChunk);
         }
       }
-      
+
       // Call the completion callback with the full response if provided
       if (onComplete) {
         onComplete(fullResponse);
       }
-      
+
       console.log(`LLM Stream - Model: ${currentModelId}`);
       return;
     } catch (err: any) {
       console.error(`Error with streaming model ${currentModelId}:`, err);
-      
-      // Check if it's a throttling error
-      if (err.name === 'ThrottlingException') {
-        // Mark current model as in cooldown
-        modelFallbackState.set(currentModelId, Date.now());
-        
-        // Try to get next available model
-        const nextModel = getNextAvailableModel(currentModelId);
-        if (nextModel) {
-          console.log(`Switching to fallback model: ${nextModel}`);
-          currentModelId = nextModel;
-          attempts++;
-          continue;
-        }
+
+      // Mark current model as in cooldown for any error (throttling, EOL, access denied, etc.)
+      modelFallbackState.set(currentModelId, Date.now());
+
+      // Try to get next available model
+      const nextModel = getNextAvailableModel(currentModelId);
+      if (nextModel) {
+        console.log(`Switching to fallback model: ${nextModel}`);
+        currentModelId = nextModel;
+        attempts++;
+        continue;
       }
-      
-      // If we've exhausted all attempts or it's not a throttling error
-      if (attempts >= maxAttempts - 1 || err.name !== 'ThrottlingException') {
-        return;
-      }
-      
-      attempts++;
+
+      // No more models to try
+      return;
     }
   }
 };
