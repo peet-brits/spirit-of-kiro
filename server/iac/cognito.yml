@@ -31,6 +31,8 @@ Resources:
           AttributeDataType: String
           Required: true
           Mutable: true
+      AutoVerifiedAttributes:
+        - email
       UsernameAttributes:
         - email
       UsernameConfiguration:
@@ -73,4 +75,4 @@ Outputs:
     Description: ARN of the Cognito User Pool
     Value: !GetAtt UserPool.Arn
     Export:
-      Name: !Sub "${AWS::StackName}-UserPoolArn" 
+      Name: !Sub "${AWS::StackName}-UserPoolArn"
