@@ -124,10 +124,12 @@ if [ "$all_required_models_available" = false ]; then
 fi
 
 # Check optional models
+# Note: Stability AI models are only available in us-west-2, so we query that region specifically
 echo -e "\nChecking optional models (for image generation):"
+available_models_usw2=$(aws bedrock list-foundation-models --region us-west-2 --query "modelSummaries[*].modelId" --output text)
 missing_optional_models=()
 for model in "${optional_models[@]}"; do
-    if echo "$available_models" | grep -q "$model"; then
+    if echo "$available_models" | grep -q "$model" || echo "$available_models_usw2" | grep -q "$model"; then
         echo -e "${GREEN}✓ Access to $model is available${NC}"
     else
         echo -e "${YELLOW}⚠ No access to $model (optional)${NC}"

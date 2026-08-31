@@ -15,37 +15,29 @@ if (!CLOUDFRONT_DISTRIBUTION_DOMAIN_NAME) {
   throw new Error('CLOUDFRONT_DOMAIN environment variable is required');
 }
 
-const bedrockRuntime = new BedrockRuntimeClient({ region: "us-east-1" });
+// Stability AI models are only available in us-west-2
+const bedrockRuntime = new BedrockRuntimeClient({ region: "us-west-2" });
 const s3Client = new S3Client();
 
 export async function generateImage(prompt) {
   const params = {
-    modelId: 'amazon.nova-canvas-v1:0',
+    modelId: 'stability.stable-image-core-v1:1',
     contentType: 'application/json',
-    accept: 'application/json',
+    accept: 'image/*',  // Stability returns raw binary image bytes
     body: JSON.stringify({
-      taskType: "TEXT_IMAGE", 
-      textToImageParams: {
-        text: prompt,
-        negativeText: 'shadow, floor, human, person, realistic'
-      },
-      imageGenerationConfig: {
-        cfgScale: 9.9,
-        seed: Math.floor(Math.random() * 1000000),
-        quality: "standard", 
-        // Smallest possible size for Nova canvas (https://docs.aws.amazon.com/nova/latest/userguide/image-gen-access.html#image-gen-resolutions)
-        width: 320, 
-        height: 320,
-        numberOfImages: 1
-      }
+      prompt: prompt,
+      negative_prompt: 'shadow, floor, human, person, realistic',
+      aspect_ratio: '1:1',
+      output_format: 'png',
+      seed: Math.floor(Math.random() * 4294967294)
     })
   };
 
   try {
     const command = new InvokeModelCommand(params);
     const response = await bedrockRuntime.send(command);
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-    return responseBody.images[0];
+    // Response body is raw binary PNG bytes — convert to base64 for the upload path
+    return Buffer.from(response.body).toString('base64');
   } catch (error) {
     console.error('Error generating image:', error);
     throw error;
@@ -117,7 +109,7 @@ export async function getImage(item, similarityThreshold = 0.25) {
   try {
     // Get the key for vector operations
     const itemKey = getItemVectorKey(item);
-    
+
     // Search for similar images in the vector store
     similarImage = await nearestMatch(itemKey);
 
@@ -125,23 +117,23 @@ export async function getImage(item, similarityThreshold = 0.25) {
       console.log(`MATCH: "${item.icon}" to "${similarImage.value.text}" with score ${similarImage.value.score}: ${similarImage.value.value}`);
       return similarImage.value.value;
     }
-    
+
     // No similar image found, generate a new one
     const imageUrl = await generateAndUploadImage(item);
-    
+
     // Store the new image with its key
     await storeKeyValue(
       itemKey,  // Use item icon as the key
       imageUrl,  // Store the image URL as the value
       { id: item.id, text: itemKey }  // Store item metadata
     );
-    
+
     console.log(`NEW: "${item.icon}" Closest match "${similarImage.value.key_text}" with score ${similarImage.value.score}: ${imageUrl}`);
     return imageUrl;
   } catch (error) {
 
     if (similarImage) {
-      console.log(`"ERROR: ${item.icon}" fallback to "${similarImage.value.text}" with score ${similarImage.value.score}: ${similarImage.value.value}`);      
+      console.log(`"ERROR: ${item.icon}" fallback to "${similarImage.value.text}" with score ${similarImage.value.score}: ${similarImage.value.value}`);
       return similarImage.value.value;
     } else {
       throw error;
