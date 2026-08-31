@@ -23,7 +23,7 @@ export async function generateImage(prompt) {
   const params = {
     modelId: 'stability.stable-image-core-v1:1',
     contentType: 'application/json',
-    accept: 'image/*',  // Stability returns raw binary image bytes
+    accept: 'application/json',
     body: JSON.stringify({
       prompt: prompt,
       negative_prompt: 'shadow, floor, human, person, realistic',
@@ -36,8 +36,8 @@ export async function generateImage(prompt) {
   try {
     const command = new InvokeModelCommand(params);
     const response = await bedrockRuntime.send(command);
-    // Response body is raw binary PNG bytes — convert to base64 for the upload path
-    return Buffer.from(response.body).toString('base64');
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+    return responseBody.images[0];
   } catch (error) {
     console.error('Error generating image:', error);
     throw error;
